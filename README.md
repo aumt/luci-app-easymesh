@@ -133,7 +133,7 @@ You don't have to build anything yourself. Every push, every `v*` tag and every 
 | `openwrt-25.12-apk` | OpenWrt 25.12.5 SDK | `luci-app-easymesh-*.apk`, `luci-i18n-easymesh-zh-cn-*.apk` |
 | `openwrt-24.10-ipk` | OpenWrt 24.10.8 SDK | `luci-app-easymesh_*.ipk`, `luci-i18n-easymesh-zh-cn_*.ipk` |
 
-Collect them from the **Actions** tab (as a run artifact), or from **Releases** — a `v*` tag creates one automatically, and a manual run can too by filling in `release_tag`. Then install the pair that matches your firmware's package manager, as described above.
+Collect them from the **Actions** tab (as a run artifact), or from **Releases**. A push to `main` publishes a release automatically, tagged `easymesh-build-<YYMMDDHHMMSS>`; pushing a `v*` tag, or running the workflow by hand with `release_tag` filled in, publishes one under that name instead. Leaving `release_tag` empty on a manual run produces artifacts only — no release. Then install the pair that matches your firmware's package manager, as described above.
 
 To start a build by hand: **Actions → Build luci-app-easymesh → Run workflow**.
 

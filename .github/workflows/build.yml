@@ -259,7 +259,15 @@ jobs:
   release:
     name: 发布 Release
     needs: build
-    if: startsWith(github.ref, 'refs/tags/v') || inputs.release_tag != ''
+    # 什么时候发 Release：
+    #   - 推 main                    -> 自动发，tag 名自动生成
+    #   - 推 v* tag                  -> 用这个 tag 本身
+    #   - 手动触发且填了 release_tag -> 用填的那个
+    # 手动触发时把 release_tag 留空，仍然只出 artifact、不发 Release（逃生口保留）；
+    # pull_request 事件天然不满足下面的条件，所以 PR 不会发 Release。
+    if: |
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
     runs-on: ubuntu-24.04
     steps:
       - name: 收集所有 artifact
@@ -271,11 +279,69 @@ jobs:
       - name: 检查
         run: ls -la dist
 
+      - name: 确定 tag 名
+        id: tag
+        env:
+          # 用 env 转一手，避免把用户输入直接插进 shell 脚本
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          if [ "$REF_TYPE" = "tag" ]; then
+            TAG="$REF_NAME"; SRC="手工推的 tag"
+          elif [ -n "$INPUT_TAG" ]; then
+            TAG="$INPUT_TAG"; SRC="手动触发时指定"
+          else
+            # 自动生成。时刻按 UTC+8，精确到秒 —— 同一分钟里连推两次也不会撞名
+            TAG="easymesh-build-$(TZ=Asia/Shanghai date +%y%m%d%H%M%S)"; SRC="自动生成"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "tag 名（$SRC）：$TAG"
+
       - name: 创建 Release
         uses: softprops/action-gh-release@v2
         with:
           # target_commitish 必须显式给，否则 tag 会落在默认分支的最新提交上
           target_commitish: ${{ github.sha }}
-          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || inputs.release_tag }}
+          tag_name: ${{ steps.tag.outputs.tag }}
           files: dist/*
-          generate_release_notes: true
+          # 这里用固定正文而不是 generate_release_notes：本仓库的读者需要的是
+          # 「四个文件该装哪个」「kmod 为什么必须编进固件」这类信息，不是 commit 列表
+          body: |
+            与架构无关的包（`arch: noarch` / `Architecture: all`）—— 用 x86-64 SDK 编出来，
+            可直接装在 arm64 等任何 OpenWrt 路由器上。
+
+            ## 装哪个
+
+            | 固件版本 | 主包 + 可选的中文翻译包 |
+            |---|---|
+            | OpenWrt 25.12 及以后（apk） | `luci-app-easymesh-*.apk` + `luci-i18n-easymesh-zh-cn-*.apk` |
+            | OpenWrt 24.10（opkg/ipk） | `luci-app-easymesh_*.ipk` + `luci-i18n-easymesh-zh-cn_*.ipk` |
+
+            翻译包只影响 LuCI 界面语言，可以不装。
+
+            ## 装之前固件里必须已经有
+
+            `kmod-batman-adv`、`kmod-cfg80211` 和 **wpad 的 mesh 变体**必须编进固件，不能事后装 ——
+            OpenWrt 的内核模块与内核 vermagic/CRC 绑定，官方 kmods 源是照官方内核编的，自编译固件装不上。
+            （用 `wpad-basic-mbedtls` 的话没有 `CONFIG_MESH`，802.11s 起不来。）
+
+            其余用户态依赖（`batctl-default`、`dawn`、`luci-compat`、`luci-lua-runtime`、
+            `libiwinfo-lua`、`bash`）由包管理器顺着依赖自动带上，不用管。
+
+            ## 安装
+
+            ```sh
+            # OpenWrt 25.12+ (apk)
+            apk add ./luci-app-easymesh-*.apk ./luci-i18n-easymesh-zh-cn-*.apk
+
+            # OpenWrt 24.10 (opkg)
+            opkg install ./luci-app-easymesh_*.ipk ./luci-i18n-easymesh-zh-cn_*.ipk
+            ```
+
+            装完刷新 LuCI 页面（或 `/etc/init.d/uhttpd restart`）。
+
+            ---
+
+            构建自 `${{ github.sha }}`，workflow run [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})。
