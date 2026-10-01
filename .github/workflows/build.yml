@@ -1,7 +1,7 @@
 name: Build luci-app-easymesh
 
 # 两个 SDK 各出一套包：
-#   OpenWrt 25.12 (apk) -> luci-app-easymesh_*.apk + luci-i18n-easymesh-zh-cn_*.apk
+#   OpenWrt 25.12 (apk) -> luci-app-easymesh-*.apk + luci-i18n-easymesh-zh-cn-*.apk
 #   OpenWrt 24.10 (opkg) -> luci-app-easymesh_*.ipk + luci-i18n-easymesh-zh-cn_*.ipk
 #
 # 注意：本包没有 src/Makefile，luci.mk 会给出 PKGARCH:=all，
