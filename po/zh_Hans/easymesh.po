@@ -1,0 +1,163 @@
+#
+# Simplified Chinese translation for luci-app-easymesh
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: luci-app-easymesh\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-10-01 12:00+0800\n"
+"PO-Revision-Date: 2026-10-01 12:00+0800\n"
+"Last-Translator: aumt <aumt@msn.com>\n"
+"Language-Team: Chinese (Simplified) <https://github.com/aumt/luci-app-easymesh>\n"
+"Language: zh_Hans\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Easy Mesh"
+msgstr "Easy Mesh"
+
+msgid "Easy Mesh WiFi Setup"
+msgstr "Easy Mesh WiFi 设置"
+
+msgid "Powered by Batman-adv (Better Approach To Mobile Adhoc Networking - Advanced). First setup your Mesh Gateway Server then setup the nodes. When configuring a Mesh Node, first activate your mesh WiFi on the radio device and establish a connection. Then enable it as a DHCP node. The default settings are typically adequate for most Mesh WiFi configurations."
+msgstr "由 Batman-adv（Better Approach To Mobile Adhoc Networking - Advanced）提供支持。请先配置 Mesh 网关（服务端），再配置各个节点。配置 Mesh 节点时，请先在射频设备上启用 Mesh WiFi 并建立连接，然后将其启用为 DHCP 节点。默认设置通常足以满足大多数 Mesh WiFi 场景。"
+
+msgid "Official website:"
+msgstr "官方网站："
+
+msgid "Mesh Status"
+msgstr "Mesh 状态"
+
+msgid "Number of Active Nodes: "
+msgstr "活动节点数："
+
+msgid "Interface"
+msgstr "接口"
+
+msgid "Neighbor Nodes"
+msgstr "邻居节点"
+
+msgid "Last Seen Timestamp"
+msgstr "最后出现时间"
+
+msgid "Mesh Settings"
+msgstr "Mesh 设置"
+
+msgid "Basic Setup"
+msgstr "基本设置"
+
+msgid "AP Mode"
+msgstr "AP 模式"
+
+msgid "Advanced Settings"
+msgstr "高级设置"
+
+msgid "Enable Mesh Networking"
+msgstr "启用 Mesh 组网"
+
+msgid "Toggle this switch to activate or deactivate the Mesh Network on this device according to the settings specified in this configuration."
+msgstr "用此开关按本页配置启用或停用本机上的 Mesh 网络。"
+
+msgid "Mesh Mode"
+msgstr "Mesh 模式"
+
+msgid "Choose whether this device is a <b>Server</b>, <b>Client</b>, or <b>Node</b> in the mesh network."
+msgstr "选择本设备在 Mesh 网络中的角色：<b>服务端</b>、<b>客户端</b>或<b>节点</b>。"
+
+msgid "Server"
+msgstr "服务端"
+
+msgid "Node"
+msgstr "节点"
+
+msgid "Client"
+msgstr "客户端"
+
+msgid "WiFi Network SSID"
+msgstr "WiFi 网络 SSID"
+
+msgid "SSID for the regular WiFi network."
+msgstr "常规 WiFi 网络使用的 SSID。"
+
+msgid "Regular AP Radio"
+msgstr "常规 AP 射频"
+
+msgid "Select the radio to be used for the regular WiFi access point."
+msgstr "选择用于常规 WiFi 接入点的射频。"
+
+msgid "Mesh Radio(s)"
+msgstr "Mesh 回程射频"
+
+msgid "Select a radio interface for mesh backhaul traffic."
+msgstr "选择用于承载 Mesh 回程流量的射频接口。"
+
+msgid "Mesh Network SSID"
+msgstr "Mesh 网络 SSID"
+
+msgid "<p style=\"text-align: justify; padding: 0;\"><strong>Ensure that the SSID is the same across all the servers/nodes in your mesh network.</strong></p>"
+msgstr "<p style=\"text-align: justify; padding: 0;\"><strong>请确保 Mesh 网络中所有服务端与节点使用相同的 SSID。</strong></p>"
+
+msgid "Password Protection"
+msgstr "密码保护"
+
+msgid "<p style=\"text-align: justify; padding: 0;\"><strong>Enable this switch to require a password to join your Mesh Network.</strong></p>"
+msgstr "<p style=\"text-align: justify; padding: 0;\"><strong>启用后，加入 Mesh 网络需要输入密码。</strong></p>"
+
+msgid "Mesh Password"
+msgstr "Mesh 密码"
+
+msgid "Reapply EasyMesh Settings"
+msgstr "重新应用 EasyMesh 设置"
+
+msgid "<p style=\"text-align: justify; padding: 0;\"><strong>Use this button to apply/reapply EasyMesh configuration after you Save & Apply.</p></strong>"
+msgstr "<p style=\"text-align: justify; padding: 0;\"><strong>「保存并应用」之后，用此按钮来应用或重新应用 EasyMesh 配置。</p></strong>"
+
+msgid "K/V/R"
+msgstr "K/V/R"
+
+msgid "<p style=\"text-align: justify; padding: 0;\"><strong>Leave these settings as default unless you know what you're doing</p></strong>"
+msgstr "<p style=\"text-align: justify; padding: 0;\"><strong>除非你清楚自己在做什么，否则请保持默认设置</p></strong>"
+
+msgid "Mobility Domain"
+msgstr "移动域"
+
+msgid "Good RSSI Threshold"
+msgstr "良好 RSSI 阈值"
+
+msgid "Bad RSSI Threshold"
+msgstr "较差 RSSI 阈值"
+
+msgid "Node Hostname"
+msgstr "节点主机名"
+
+msgid "IP Mode"
+msgstr "IP 模式"
+
+msgid "Choose if the node uses DHCP or a Static IP"
+msgstr "选择节点使用 DHCP 还是静态 IP"
+
+msgid "DHCP"
+msgstr "DHCP"
+
+msgid "Static"
+msgstr "静态"
+
+msgid "Static IP Address"
+msgstr "静态 IP 地址"
+
+msgid "Mesh Gateway IP Address"
+msgstr "Mesh 网关 IP 地址"
+
+msgid "IPv4 netmask"
+msgstr "IPv4 子网掩码"
+
+msgid "DNS Server"
+msgstr "DNS 服务器"
+
+msgid "Enable Dumb AP Mode"
+msgstr "启用哑 AP（Dumb AP）模式"
+
+msgid "WARNING: THIS WILL CHANGE THIS NODE'S IP ADDRESS, YOU WILL LOOSE ACCESS TO THIS UI"
+msgstr "警告：此操作会改变本节点的 IP 地址，你将失去对当前界面的访问"

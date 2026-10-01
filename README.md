@@ -40,7 +40,7 @@ Mesh WiFi networks are ideal for:
 ### **Step 2: Add the EasyMesh App to OpenWRT Package Sources**  
 ```bash
 cd package
-git clone https://github.com/torguardvpn/luci-app-easymesh.git
+git clone https://github.com/aumt/luci-app-easymesh.git
 ```
 
 ### **Step 3: Compile the Package**  
@@ -59,24 +59,105 @@ git clone https://github.com/torguardvpn/luci-app-easymesh.git
    ```bash
    make package/luci-app-easymesh/compile V=s
    ```
-4. Once compiled, the `.ipk` package will be available in `bin/packages/.../base/`.  
+4. Once compiled, the packages land in `bin/packages/<arch>/base/`. Which **format** you get is decided by the SDK you chose in Step 1, not by this repository:
+
+   | SDK | Package manager | Output |
+   |---|---|---|
+   | OpenWrt **25.12** and newer | `apk` | `.apk` |
+   | OpenWrt **24.10** and older | `opkg` | `.ipk` |
+
+   The two formats also use different file-name rules, so don't copy a name from one section to the other:
+
+   | SDK | `luci-app-easymesh` | `luci-i18n-easymesh-zh-cn` |
+   |---|---|---|
+   | 25.12 → `.apk` | `luci-app-easymesh-3.8.17-r1.apk` | `luci-i18n-easymesh-zh-cn-0.261001.20149.apk` |
+   | 24.10 → `.ipk` | `luci-app-easymesh_3.8.17-r1_all.ipk` | `luci-i18n-easymesh-zh-cn_0.261001.20149_all.ipk` |
+
+   - **apk** uses hyphens and carries **no architecture field in the name**.
+   - **ipk** uses underscores and ends in `_all`.
+   - The translation package's version (`0.261001.20149`) is derived from the build date, so it changes on every build — match it with a wildcard, not a literal name.
+
+   Building `luci-app-easymesh` also builds `luci-i18n-easymesh-zh-cn` (Simplified Chinese). That package is **hidden** in `menuconfig` — it is pulled in automatically when Simplified Chinese is enabled (`LuCI` → `Translations` → `zh_Hans`), or you can force it by adding `CONFIG_PACKAGE_luci-i18n-easymesh-zh-cn=m` to `.config`.  
+
+   > Both packages are `PKGARCH:=all` (apk: `arch: noarch`) — they contain only Lua, shell and compiled `.lmo` files, so a package built with an **x86-64 SDK installs fine on an arm64/aarch64 router**. You do not need a matching-architecture SDK.
+
+# **📥 Installing `luci-app-easymesh`**
+
+First check which package manager your firmware uses:
+
+```sh
+apk --version    # OpenWrt 25.12 and newer
+opkg --version   # OpenWrt 24.10 and older
+```
+
+Then download the matching file from [Releases](https://github.com/aumt/luci-app-easymesh/releases).
+
+## **OpenWrt 25.12 and newer — `.apk`**
+
+### **Option 1: Install via LuCI UI**
+1. Download `luci-app-easymesh-*.apk` — and `luci-i18n-easymesh-zh-cn-*.apk` too if you want a Simplified Chinese interface.
+2. Navigate to **System → Software** in LuCI.
+3. Click **Upload Package**, select the `.apk` file, and install it.
+
+### **Option 2: Install via CLI (SSH/Terminal)**
+```sh
+apk update
+apk add --allow-untrusted /path/to/luci-app-easymesh-*.apk
+apk add --allow-untrusted /path/to/luci-i18n-easymesh-zh-cn-*.apk
+```
+
+> The release packages are not signed with your firmware's key, hence `--allow-untrusted`.
+
+## **OpenWrt 24.10 and older — `.ipk`**
+
+### **Option 1: Install via LuCI UI**
+1. Download `luci-app-easymesh_*.ipk` — and `luci-i18n-easymesh-zh-cn_*.ipk` too if you want a Simplified Chinese interface.
+2. Navigate to **System → Software** in LuCI.
+3. Click **Upload Package**, select the `.ipk` file, and install it.
+
+### **Option 2: Install via CLI (SSH/Terminal)**
+```sh
+opkg update
+opkg install /path/to/luci-app-easymesh_*.ipk
+opkg install /path/to/luci-i18n-easymesh-zh-cn_*.ipk
+```
 
 ---
 
-# **📥 Installing `luci-app-easymesh` from Release IPK**  
+# **🤖 Prebuilt Packages (GitHub Actions)**
 
-### **Option 1: Install via OpenWRT UI**  
-1. Download the latest `luci-app-easymesh_3.8.17-r1_all.ipk
-` from the [Releases](https://github.com/torguardvpn/luci-app-easymesh/releases/download/3.8.17/luci-app-easymesh_3.8.17-r1_all.ipk) section.  
-2. Navigate to **System → Software** in OpenWRT's LuCI UI.  
-3. Click **Upload Package**, select `luci-app-easymesh_3.8.17-r1_all.ipk
-`, and install it.  
+You don't have to build anything yourself. Every push, every `v*` tag and every pull request triggers [`.github/workflows/build.yml`](.github/workflows/build.yml), which builds this package with **both** SDKs at once and uploads four files:
 
-### **Option 2: Install via CLI (SSH/Terminal)**  
-```bash
-opkg update
-opkg install /path/to/luci-app-easymesh_3.8.17-r1_all.ipk
-```
+| Artifact | SDK | Files inside |
+|---|---|---|
+| `openwrt-25.12-apk` | OpenWrt 25.12.5 SDK | `luci-app-easymesh-*.apk`, `luci-i18n-easymesh-zh-cn-*.apk` |
+| `openwrt-24.10-ipk` | OpenWrt 24.10.8 SDK | `luci-app-easymesh_*.ipk`, `luci-i18n-easymesh-zh-cn_*.ipk` |
+
+Collect them from the **Actions** tab (as a run artifact), or from **Releases** — a `v*` tag creates one automatically, and a manual run can too by filling in `release_tag`. Then install the pair that matches your firmware's package manager, as described above.
+
+To start a build by hand: **Actions → Build luci-app-easymesh → Run workflow**.
+
+> The workflow compiles **only this package plus the host tools it needs** (`po2lmo` for the translation), not the runtime dependency tree — `mac80211`, `hostapd`, `batman-adv`, `batctl`, `dawn`, `iwinfo` and `linux-firmware` are *not* rebuilt. They are dependencies to be *installed*, not sources to be compiled, and skipping them doesn't change the packages' `depends` metadata at all. This is what keeps a run at a couple of minutes instead of pulling a 582 MB firmware blob.
+
+---
+
+# **⚠️ Required Kernel & Wireless Packages**
+
+`luci-app-easymesh` drives **batman-adv** and **802.11s mesh**, which are *not* part of a default OpenWrt build. The package declares them as dependencies, so a normal install pulls them in — but they must be available in your configured package feeds, and on a **self-built firmware** those kernel modules have to have been built into it in the first place.
+
+| Package | Needed for |
+|---|---|
+| `kmod-batman-adv` | the batman-adv kernel module — no module, no `bat0` |
+| `batctl-default` | the `batctl` CLI behind the Mesh Status table |
+| `kmod-cfg80211` | cfg80211 wireless stack used by the mesh radios |
+| `dawn` | 802.11k/v/r roaming daemon |
+| `wpad-mesh-openssl` (or `-mbedtls` / `-wolfssl`) | **802.11s mesh support. The default `wpad-basic-*` does NOT have it** — mesh interfaces silently fail to come up |
+| `luci-proto-batman-adv` | the `batadv` protocol handler in LuCI |
+| `luci-compat` + `luci-lua-runtime` | this is a Lua CBI app; these provide the Lua runtime layer |
+| `libiwinfo-lua` | Lua `iwinfo` bindings, used to label the radio list |
+| `bash` | `root/easymesh/easymesh.sh` is a bash script |
+
+> A `wpad-mesh-*` package **replaces** whichever `wpad-*` is installed (they all `PROVIDES: wpad`). Switch deliberately, and pick the TLS backend the rest of your firmware already uses.
 
 ---
 

@@ -1,0 +1,272 @@
+name: Build luci-app-easymesh
+
+# 两个 SDK 各出一套包：
+#   OpenWrt 25.12 (apk) -> luci-app-easymesh_*.apk + luci-i18n-easymesh-zh-cn_*.apk
+#   OpenWrt 24.10 (opkg) -> luci-app-easymesh_*.ipk + luci-i18n-easymesh-zh-cn_*.ipk
+#
+# 注意：本包没有 src/Makefile，luci.mk 会给出 PKGARCH:=all，
+# 在 apk 侧打包为 arch:noarch —— 即产物与目标架构无关，
+# 用 x86-64 SDK 编出来的包可直接装在 arm64/aarch64 的路由器上。
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: '发布 tag；留空则只产出 artifact，不创建 Release'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: OpenWrt 25.12 (apk)
+            slug: openwrt-25.12-apk
+            sdk_ver: '25.12.5'
+            sdk_file: openwrt-sdk-25.12.5-x86-64_gcc-14.3.0_musl.Linux-x86_64.tar.zst
+            pkg_ext: apk
+          - name: OpenWrt 24.10 (ipk)
+            slug: openwrt-24.10-ipk
+            sdk_ver: '24.10.8'
+            sdk_file: openwrt-sdk-24.10.8-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst
+            pkg_ext: ipk
+
+    steps:
+      - name: 检出源码
+        uses: actions/checkout@v4
+
+      - name: 安装 SDK 前置依赖
+        run: |
+          set -euo pipefail
+          # SDK 的 make defconfig 会做前置检查，缺 gawk/wget/file 会直接 'Prerequisite check failed'
+          # gettext 是给 git submodule 用的（缺 envsubst 会刷一屏 'git-sh-setup: envsubst: not found'）
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq gawk wget file zstd rsync gettext
+          awk --version | head -1
+          envsubst --version | head -1
+
+      - name: 下载并解压 SDK
+        run: |
+          set -euo pipefail
+          URL="https://downloads.openwrt.org/releases/${{ matrix.sdk_ver }}/targets/x86/64/${{ matrix.sdk_file }}"
+          echo "下载 $URL"
+          curl -fsSL --retry 3 --retry-delay 5 -o sdk.tar.zst "$URL"
+          mkdir -p sdk
+          tar --zstd -xf sdk.tar.zst -C sdk --strip-components=1
+          rm -f sdk.tar.zst
+          echo "SDK 解压完成，rules.mk: $(test -f sdk/rules.mk && echo OK || echo 缺失)"
+
+      - name: 把本包放进 SDK
+        run: |
+          set -euo pipefail
+          mkdir -p sdk/package/luci-app-easymesh
+          rsync -a --delete \
+            --exclude '.git/' --exclude 'images/' --exclude '.github/' \
+            ./ sdk/package/luci-app-easymesh/
+          echo "已放入："
+          find sdk/package/luci-app-easymesh -type f | sort
+
+      - name: 安装 feeds
+        working-directory: sdk
+        run: |
+          set -euo pipefail
+          # git.openwrt.org 偶发很慢甚至超时；换成官方 GitHub 镜像。
+          # 只替换域名，SDK 自带的 pin（^commit / ;branch）原样保留。
+          sed -e 's|https://git\.openwrt\.org/openwrt/openwrt\.git|https://github.com/openwrt/openwrt.git|' \
+              -e 's|https://git\.openwrt\.org/feed/packages\.git|https://github.com/openwrt/packages.git|' \
+              -e 's|https://git\.openwrt\.org/project/luci\.git|https://github.com/openwrt/luci.git|' \
+              -e 's|https://git\.openwrt\.org/feed/routing\.git|https://github.com/openwrt/routing.git|' \
+              -e 's|https://git\.openwrt\.org/feed/telephony\.git|https://github.com/openwrt/telephony.git|' \
+              -e 's|https://git\.openwrt\.org/feed/video\.git|https://github.com/openwrt/video.git|' \
+              feeds.conf.default > feeds.conf
+
+          # 24.10 的 feeds.conf.default 里 base 是 `src-git-full ...;v24.10.8`，会被
+          # checkout 成游离 HEAD；一旦走到 `git pull` 就报 "You are not currently on
+          # a branch" 并让 `feeds update -a` 返回 1。全新 SDK 走的是 clone 分支，
+          # 通常不触发 —— 但不能指望它，所以这里**不看退出码**，改为逐个校验
+          # feed 目录是否真的落地：真失败（clone 不下来）目录会是空的，仍然报错退出。
+          ./scripts/feeds update -a || true
+          FEEDS=$(sed -nE 's|^src-git(-full)?[[:space:]]+(--[^[:space:]]+[[:space:]]+)*([^[:space:]]+).*|\3|p' feeds.conf)
+          for f in $FEEDS; do
+            if [ -z "$(ls -A "feeds/$f" 2>/dev/null)" ]; then
+              echo "::error::feed $f 缺失或为空"
+              exit 1
+            fi
+            # 注意：25.12 的 base 是 `src-git --root=package`，feeds/base 里是符号链接，
+            # du 会报 0 字节，所以这里数条目数而不是看体积
+            printf 'feed %-10s OK  %s 个条目\n' "$f" "$(ls -A "feeds/$f" | wc -l)"
+          done
+
+          ./scripts/feeds install -a
+          test -f feeds/luci/luci.mk
+
+      - name: 选择要编译的包
+        working-directory: sdk
+        run: |
+          set -euo pipefail
+          {
+            echo 'CONFIG_PACKAGE_luci-app-easymesh=m'
+            # i18n 包在 menuconfig 里是 HIDDEN，靠 CONFIG_PACKAGE_* 直接点名选中；
+            # 再把 zh_Hans 语言本身打开，装好后 LuCI 的语言菜单里才会出现「简体中文」
+            echo 'CONFIG_LUCI_LANG_zh_Hans=y'
+            echo 'CONFIG_PACKAGE_luci-i18n-easymesh-zh-cn=m'
+          } >> .config
+          make defconfig
+          grep -E 'CONFIG_LUCI_LANG_zh_Hans=|CONFIG_PACKAGE_luci-app-easymesh=|CONFIG_PACKAGE_luci-i18n-easymesh-zh-cn=' .config
+
+      - name: 编译
+        working-directory: sdk
+        run: |
+          set -euo pipefail
+          # 为什么不能直接 `make package/luci-app-easymesh/compile`：
+          # `LUCI_DEPENDS` 里的 `+foo` 会被编成 kconfig 的 select，于是这条命令会顺着
+          # tmp/.packagedeps 把 mac80211 / hostapd / batman-adv / batctl / dawn / iwinfo /
+          # linux-firmware（582MB 下载！）这些**运行时依赖**整套编一遍。
+          # 对一个 PKGARCH:=all 的纯 Lua 包毫无必要：产物内容与 apk/ipk 里的 depends
+          # 元数据都不受它影响（元数据来自 Makefile 的 LUCI_DEPENDS）。
+          #
+          # 也不能靠改 tmp/.packagedeps —— include/toplevel.mk:78 的
+          # `prepare-tmpinfo: FORCE` 每次 make 都重新生成该文件，改文件必被覆盖（实测）。
+          #
+          # 正确的杠杆是命令行覆盖：include/subdir.mk:74 用
+          #     $(1)/$(bd)/$(target): $($(1)/$(bd)/$(target)) ...
+          # 这个**与目标同名**的变量当先决条件，而 GNU make 里命令行赋值的变量会
+          # 压掉 makefile 里的 `+=`。于是把先决条件换成「host 工具 + toolchain」即可。
+          LINE=$(grep -F '$(curdir)/luci-app-easymesh/compile +=' tmp/.packagedeps)
+          echo "构建系统给的原始依赖行："
+          echo "  $LINE"
+          # 只留 host 工具与 toolchain（i18n 打包要 luci-base 的 po2lmo）。
+          # 条件依赖要连同 $(if $(CONFIG_...),...) 守卫一起保留 —— 剥掉守卫会把
+          # CONFIG_LUCI_SRCDIET 关着时本该跳过的 luasrcdiet 强行编出来。
+          # 生成器的注释里有这套机制的完整说明。
+          KEEP=$(python3 "$GITHUB_WORKSPACE/.github/scripts/gen-keep.py" tmp/.packagedeps .config)
+          test -n "$KEEP"
+          echo "只保留这些先决条件："
+          echo "  $KEEP"
+
+          make -j"$(nproc)" package/luci-app-easymesh/compile \
+               "package/luci-app-easymesh/compile=$KEEP" V=s 2>&1 | tee build.log
+
+          # 断言运行时依赖确实没被编 —— 否则「跳过依赖」就是句空话
+          for p in mac80211 hostapd batman-adv dawn batctl iwinfo linux-firmware; do
+            n=$(grep -c "Entering directory '[^']*/$p'" build.log || true)
+            echo "  $p: $n"
+            [ "$n" = "0" ] || { echo "::error::$p 被误编了，命令行覆盖没生效"; exit 1; }
+          done
+
+      - name: 收集并校验产物
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          # 注意模式是 *easymesh* 而不是 *luci-app-easymesh*：
+          # 后者匹配不到 luci-i18n-easymesh-zh-cn-*.apk（本地实测踩过这个坑）
+          find sdk/bin/packages -type f -name "*easymesh*.${{ matrix.pkg_ext }}" -exec cp -v {} out/ \;
+
+          echo "--- 产物 ---"
+          ls -la out
+
+          # 必须正好两个：主包 + 中文翻译包
+          ls out | grep -q '^luci-app-easymesh' || { echo "::error::缺少主包 luci-app-easymesh"; exit 1; }
+          ls out | grep -q '^luci-i18n-easymesh-zh-cn' || { echo "::error::缺少中文翻译包 luci-i18n-easymesh-zh-cn"; exit 1; }
+          count=$(ls out | wc -l)
+          echo "共 $count 个包"
+          [ "$count" = "2" ] || { echo "::error::产物数量应为 2，实际 $count"; exit 1; }
+
+          # 25.12 的 .apk **不是** gzip/zstd tar，也没有 .PKGINFO 成员：
+          # 它是 apk-tools 3.x 的 ADB v3 格式（文件头魔数 "ADBd"），
+          # 只能用 SDK 自带的 apk 工具读（`tar -xzf` 会报 "not in gzip format"）。
+          APKTOOL=sdk/staging_dir/host/bin/apk
+          if [ "${{ matrix.pkg_ext }}" = "apk" ]; then
+            test -x "$APKTOOL" || { echo "::error::找不到 $APKTOOL"; exit 1; }
+            "$APKTOOL" --version
+            # adbdump 会把 info/架构/依赖/文件树全打出来
+            # （顺便看包名：apk 是连字符 luci-app-easymesh-3.8.17-r1.apk，
+            #   ipk 是下划线 luci-app-easymesh_3.8.17-r1_all.ipk）
+            head -c 4 out/luci-app-easymesh-*.apk | od -c | head -1
+          fi
+
+          meta_of() {
+            case "$1" in
+              *.apk) "$APKTOOL" adbdump "$1" 2>/dev/null | sed -n '/^info:/,/^paths:/p' ;;
+              *.ipk) tar -xzf "$1" -O ./control.tar.gz 2>/dev/null | tar -xzO ./control 2>/dev/null ;;
+            esac
+          }
+          files_of() {
+            case "$1" in
+              *.apk) "$APKTOOL" adbdump "$1" 2>/dev/null ;;
+              *.ipk) tar -xzf "$1" -O ./data.tar.gz 2>/dev/null | tar -tz 2>/dev/null ;;
+            esac
+          }
+
+          echo "--- 元数据 ---"
+          for f in out/*; do
+            echo "### $(basename "$f")"
+            meta_of "$f"
+          done
+
+          # 关键校验之1：上面剥掉了依赖的**编译**，但依赖的**元数据**必须一条不少。
+          # 元数据来自 Makefile 的 LUCI_DEPENDS，与 tmp/.packagedeps 无关。
+          for f in out/luci-app-easymesh*; do
+            meta=$(meta_of "$f")
+            echo "$meta" | grep -q 'arch: noarch' || echo "$meta" | grep -q 'Architecture: all' \
+              || { echo "::error::$(basename "$f") 不是 noarch/all"; exit 1; }
+            for dep in kmod-batman-adv kmod-cfg80211 batctl-default dawn luci-compat luci-lua-runtime; do
+              echo "$meta" | grep -q -- "$dep" || { echo "::error::$(basename "$f") 元数据里缺依赖 $dep"; exit 1; }
+            done
+            echo "依赖元数据完整：$(basename "$f")"
+          done
+
+          # 关键校验之2：中文翻译包必须真的带上编译好的 .lmo，
+          # 路径由 luci.mk 的 LUCI_LC_ALIAS.zh_Hans=zh-cn 决定
+          i18n=$(ls out/luci-i18n-easymesh-zh-cn*)
+          files_of "$i18n" | grep -q 'easymesh.zh-cn.lmo' \
+            || { echo "::error::$(basename "$i18n") 里没有 easymesh.zh-cn.lmo"; exit 1; }
+          echo "翻译文件就位：$(basename "$i18n") -> usr/lib/lua/luci/i18n/easymesh.zh-cn.lmo"
+
+          ls -la out
+
+      - name: 上传 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.slug }}
+          path: out/*
+          if-no-files-found: error
+
+  release:
+    name: 发布 Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.release_tag != ''
+    runs-on: ubuntu-24.04
+    steps:
+      - name: 收集所有 artifact
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: 检查
+        run: ls -la dist
+
+      - name: 创建 Release
+        uses: softprops/action-gh-release@v2
+        with:
+          # target_commitish 必须显式给，否则 tag 会落在默认分支的最新提交上
+          target_commitish: ${{ github.sha }}
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || inputs.release_tag }}
+          files: dist/*
+          generate_release_notes: true
