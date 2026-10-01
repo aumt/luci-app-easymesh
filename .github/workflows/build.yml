@@ -74,10 +74,19 @@ jobs:
       - name: 把本包放进 SDK
         run: |
           set -euo pipefail
+          # ★ 目标目录在源目录**内部**（sdk/ 就建在检出根下），所以必须把 sdk/ 排除掉：
+          # 否则 rsync 会把自己刚写进去的那份副本再当作源拷一遍，一层层递归下去，
+          # 直到路径超出 PATH_MAX。首跑的实际表现是刷屏的
+          #   filename overflows max-path len by N / temporary filename too long
+          # 最后 "rsync error: some files/attrs were not transferred (code 23)"，
+          # 两个矩阵任务都死在这一步（13813 行 overflow 刷屏）。
           mkdir -p sdk/package/luci-app-easymesh
           rsync -a --delete \
             --exclude '.git/' --exclude 'images/' --exclude '.github/' \
+            --exclude '/sdk' \
             ./ sdk/package/luci-app-easymesh/
+          # 断言没有递归残留（有的话这里直接失败，而不是等编译时才报奇怪的错）
+          test ! -e sdk/package/luci-app-easymesh/sdk
           echo "已放入："
           find sdk/package/luci-app-easymesh -type f | sort
 
